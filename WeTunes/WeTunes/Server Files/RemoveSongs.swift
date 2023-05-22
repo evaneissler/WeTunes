@@ -8,12 +8,21 @@
 import Foundation
 import FirebaseFirestore
 
+struct SongRemovalObject: Identifiable, Hashable {
+    var id: String
+    var title: String
+    var artist: String
+    var votes: Int
+    var artwork: String
+    var duration: String
+}
+
 class RemoveSongs {
     
     @Published
-    var topObject = [SongObject]()
+    var topObject = [SongRemovalObject]()
     
-    // Calls getTopSongForRemoval()
+    getTopSongForRemoval()
     
     func removeTopSong(songID: String) {
        
@@ -23,7 +32,6 @@ class RemoveSongs {
     }
     
     func getTopSongForRemoval() {
-    
         let doThis = Firestore.firestore()
         
         doThis.collection("songs").order(by: "votes", descending: true).getDocuments { [self] snapshot, error in
@@ -32,24 +40,39 @@ class RemoveSongs {
                 // No errors
                 if let snapshot = snapshot {
                     // Get all documents and create songs
+                    var topObjectDupe = [SongObject]()
                     for song in snapshot.documents {
                         // Create object for each song
-                        if self.topObject.isEmpty {
-                            self.topObject.append(SongObject(id: song.documentID, title: song["title"] as? String ?? "", artist: song["artist"] as? String ?? "", votes: song["votes"] as? Int ?? 0, artwork: song["artwork"] as? String ?? "", duration: song["duration"] as? String ?? ""))
-                            print(self.topObject)
+                        if topObjectDupe.isEmpty {
+                            topObjectDupe.append(SongObject(id: song.documentID, title: song["title"] as? String ?? "", artist: song["artist"] as? String ?? "", votes: song["votes"] as? Int ?? 0, artwork: song["artwork"] as? String ?? "", duration: song["duration"] as? String ?? ""))
+                            print(topObjectDupe)
+                            
                             removeTopSong(songID: song.documentID)
+                            
                             // repeat after song duration:
-                            startTimerUntilNextRemoval(with: song["duration"] as! String ?? "0:05")
+                            if song["duration"] as! String == "" {
+                                startTimerUntilNextRemoval(with: "0:05")
+                            } else {
+                                startTimerUntilNextRemoval(with: song["duration"] as! String)
+                            }
+                            
+                            return
                         }
                     }
-                    startTimerUntilNextRemoval(with: "0:05")
-                } else {
-                    // Handle error
-                    print("Didn't find any songs")
                 }
+            } else {
+                // Handle error
+                print("Error: \(error?.localizedDescription ?? "")")
+            }
+            
+            // Repeat the search after five seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                self.getTopSongForRemoval()
             }
         }
     }
+
+
     
     func startTimerUntilNextRemoval(with timeString: String) {
         let components = timeString.components(separatedBy: ":")
@@ -63,16 +86,13 @@ class RemoveSongs {
         
         let timeInterval = TimeInterval(minutes * 60 + seconds)
         
-        
         print("THIS IS THE TIME INTERVAL")
         print(timeInterval)
         
-        let timer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) {_ in
-            
+        let timer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { _ in
             let doThis = Firestore.firestore()
             
-            // SECOND TIME THROUGH
-             doThis.collection("songs").order(by: "votes", descending: true).getDocuments { [self] snapshot, error in
+            doThis.collection("songs").order(by: "votes", descending: true).getDocuments { [self] snapshot, error in
                 // Check for errors
                 if error == nil {
                     // No errors
@@ -84,18 +104,33 @@ class RemoveSongs {
                             if topSongObject.isEmpty {
                                 topSongObject.append(SongObject(id: song.documentID, title: song["title"] as? String ?? "", artist: song["artist"] as? String ?? "", votes: song["votes"] as? Int ?? 0, artwork: song["artwork"] as? String ?? "", duration: song["duration"] as? String ?? ""))
                                 
+                                print("removing song")
                                 removeTopSong(songID: song.documentID)
                                 // repeat after song duration:
-                                startTimerUntilNextRemoval(with: song["duration"] as! String ?? "0:05")
+                                if song["duration"] as! String == "" {
+                                    startTimerUntilNextRemoval(with: "0:05")
+                                } else {
+                                    startTimerUntilNextRemoval(with: song["duration"] as! String)
+                                }
+                                
+                                return
                             }
                         }
-                        startTimerUntilNextRemoval(with: "0:05")
                     }
+                } else {
+                    // Handle error
+                    print("Error: \(error?.localizedDescription ?? "")")
+                }
+                
+                // Repeat the search after five seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    self.startTimerUntilNextRemoval(with: timeString)
                 }
             }
         }
+        
         RunLoop.current.add(timer, forMode: .common)
     }
-    
-    
+
+
 }
